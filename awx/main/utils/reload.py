@@ -13,9 +13,6 @@ logger = logging.getLogger('awx.main.utils.reload')
 
 def _supervisor_service_command(service_internal_names, command, communicate=True):
     '''
-    Service internal name options:
-     - beat - celery - callback - channels - uwsgi - daphne
-     - fact - nginx
     example use pattern of supervisorctl:
     # supervisorctl restart tower-processes:receiver tower-processes:factcacher
     '''
@@ -27,6 +24,8 @@ def _supervisor_service_command(service_internal_names, command, communicate=Tru
         args.extend(['-c', '/supervisor.conf'])
     programs = []
     name_translation_dict = settings.SERVICE_NAME_DICT
+    if not service_internal_names:
+        programs.append('{}:*'.format(group_name))
     for n in service_internal_names:
         if n in name_translation_dict:
             programs.append('{}:{}'.format(group_name, name_translation_dict[n]))
@@ -48,6 +47,6 @@ def _supervisor_service_command(service_internal_names, command, communicate=Tru
         logger.info('Submitted supervisorctl {} command, not waiting for result'.format(command))
 
 
-def stop_local_services(service_internal_names, communicate=True):
-    logger.warn('Stopping services {} on this node in response to user action'.format(service_internal_names))
-    _supervisor_service_command(service_internal_names, command='stop', communicate=communicate)
+def stop_local_services(communicate=True):
+    logger.warn('Stopping services on this node in response to user action')
+    _supervisor_service_command([], command='stop', communicate=communicate)

@@ -31,8 +31,8 @@ class TestDependentInventoryUpdate:
         task = RunProjectUpdate()
         task.revision_path = scm_revision_file
         proj_update = ProjectUpdate.objects.create(project=scm_inventory_source.source_project)
-        with mock.patch.object(RunProjectUpdate, '_update_dependent_inventories') as inv_update_mck:
-            with mock.patch.object(RunProjectUpdate, 'release_lock'):
+        with mock.patch.object(RunProjectUpdate.wrapped, '_update_dependent_inventories') as inv_update_mck:
+            with mock.patch.object(RunProjectUpdate.wrapped, 'release_lock'):
                 task.post_run_hook(proj_update, 'successful')
                 inv_update_mck.assert_called_once_with(proj_update, mock.ANY)
 
@@ -40,8 +40,8 @@ class TestDependentInventoryUpdate:
         task = RunProjectUpdate()
         task.revision_path = scm_revision_file
         proj_update = ProjectUpdate.objects.create(project=project)
-        with mock.patch.object(RunProjectUpdate, '_update_dependent_inventories') as inv_update_mck:
-            with mock.patch.object(RunProjectUpdate, 'release_lock'):
+        with mock.patch.object(RunProjectUpdate.wrapped, '_update_dependent_inventories') as inv_update_mck:
+            with mock.patch.object(RunProjectUpdate.wrapped, 'release_lock'):
                 task.post_run_hook(proj_update, 'successful')
                 assert not inv_update_mck.called
 
@@ -49,7 +49,7 @@ class TestDependentInventoryUpdate:
         task = RunProjectUpdate()
         scm_inventory_source.scm_last_revision = ''
         proj_update = ProjectUpdate.objects.create(project=scm_inventory_source.source_project)
-        with mock.patch.object(RunInventoryUpdate, 'run') as iu_run_mock:
+        with mock.patch.object(RunInventoryUpdate.wrapped, 'run') as iu_run_mock:
             task._update_dependent_inventories(proj_update, [scm_inventory_source])
             assert InventoryUpdate.objects.count() == 1
             inv_update = InventoryUpdate.objects.first()
@@ -78,7 +78,7 @@ class TestDependentInventoryUpdate:
         def user_cancels_project(pk):
             ProjectUpdate.objects.all().update(cancel_flag=True)
 
-        with mock.patch.object(RunInventoryUpdate, 'run') as iu_run_mock:
+        with mock.patch.object(RunInventoryUpdate.wrapped, 'run') as iu_run_mock:
             iu_run_mock.side_effect = user_cancels_project
             task._update_dependent_inventories(proj_update, [is1, is2])
             # Verify that it bails after 1st update, detecting a cancel

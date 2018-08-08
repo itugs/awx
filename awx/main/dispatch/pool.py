@@ -1,7 +1,5 @@
-import errno
 import logging
 import os
-import signal
 import traceback
 
 from multiprocessing import Process
@@ -15,14 +13,27 @@ from django.core.cache import cache as django_cache
 logger = logging.getLogger('awx.main.dispatch')
 
 
-def signame(sig):
-    return dict(
-        (k, v) for v, k in signal.__dict__.items()
-        if v.startswith('SIG') and not v.startswith('SIG_')
-    )[sig]
-
-
 class WorkerPool(object):
+    '''
+    Creates a pool of forked worker processes, each of which has an associated
+    multiprocessing.Queue.
+
+    As WorkerPool.write(...) is called (generally, by a kombu consumer
+    implementation when it receives an AMQP message), messages are passed to
+    one of the multiprocessing Queues where some work can be done on them.
+
+    class MessagePrinter(awx.main.dispatch.worker.BaseWorker):
+
+        def perform_work(self, body):
+            print body
+
+    pool = WorkerPool(min_workers=4)  # spawn four worker processes
+    pool.init_workers(MessagePrint().work_loop)
+    pool.write(
+        0,  # preferred worker 0
+        'Hello, World!'
+    )
+    '''
 
     def __init__(self, min_workers=None, queue_size=None):
         self.min_workers = min_workers or settings.JOB_EVENT_WORKERS
@@ -41,29 +52,16 @@ class WorkerPool(object):
         return len(self.workers)
 
     def init_workers(self, target, *target_args):
-        def shutdown_handler(active_workers):
-            def _handler(signum, frame):
-                logger.debug('received shutdown {}'.format(signame(signum)))
-                try:
-                    for active_worker in active_workers:
-                        logger.debug('terminating worker')
-                    signal.signal(signum, signal.SIG_DFL)
-                    os.kill(os.getpid(), signum) # Rethrow signal, this time without catching it
-                except Exception:
-                    logger.exception('error in shutdown_handler')
-            return _handler
-
+        # It's important to close these because we're _about_ to fork, and we
+        # don't want the forked processes to inherit the open sockets
+        # for the DB and memcached connections (that way lies race conditions)
         django_connection.close()
         django_cache.close()
         for idx in range(self.min_workers):
             queue_actual = MPQueue(self.queue_size)
             w = Process(target=target, args=(queue_actual, idx,) + target_args)
             w.start()
-            logger.debug('started {}[{}]'.format(target.im_self.__class__.__name__, idx))
             self.workers.append([0, queue_actual, w])
-
-        signal.signal(signal.SIGINT, shutdown_handler([p[2] for p in self.workers]))
-        signal.signal(signal.SIGTERM, shutdown_handler([p[2] for p in self.workers]))
 
     def write(self, preferred_queue, body):
         queue_order = sorted(range(self.min_workers), cmp=lambda x, y: -1 if x==preferred_queue else 0)
@@ -72,7 +70,11 @@ class WorkerPool(object):
             try:
                 worker_actual = self.workers[queue_actual]
                 worker_actual[1].put(body, block=True, timeout=5)
-                logger.debug('delivered to Worker[{}] qsize {}'.format(
+                uuid = 'message'
+                if isinstance(body, dict) and 'uuid' in body:
+                    uuid = body['uuid']
+                logger.debug('delivered {} to worker[{}] qsize {}'.format(
+                    uuid,
                     queue_actual, worker_actual[1].qsize()
                 ))
                 worker_actual[0] += 1
@@ -87,11 +89,11 @@ class WorkerPool(object):
         logger.warn("could not write payload to any queue, attempted order: {}".format(write_attempt_order))
         return None
 
-    def stop(self):
-        for worker in self.workers:
-            messages, queue, process = worker
-            try:
-                os.kill(process.pid, signal.SIGTERM)
-            except OSError as e:
-                if e.errno != errno.ESRCH:
-                    raise
+    def stop(self, signum):
+        try:
+            for worker in self.workers:
+                _, _, process = worker
+                logger.debug('terminating worker pid:{}'.format(process.pid))
+                os.kill(process.pid, signum)
+        except Exception:
+            logger.exception('error in shutdown_handler')

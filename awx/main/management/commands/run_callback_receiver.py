@@ -18,8 +18,9 @@ class Command(BaseCommand):
 
     def handle(self, *arg, **options):
         with Connection(settings.BROKER_URL) as conn:
+            consumer = None
             try:
-                AWXConsumer(
+                consumer = AWXConsumer(
                     conn,
                     CallbackBrokerWorker(),
                     [
@@ -29,6 +30,9 @@ class Command(BaseCommand):
                             routing_key=settings.CALLBACK_QUEUE
                         )
                     ],
-                ).run()
+                )
+                consumer.run()
             except KeyboardInterrupt:
                 print('Terminating Callback Receiver')
+                if consumer:
+                    consumer.stop()

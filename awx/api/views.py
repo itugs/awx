@@ -172,7 +172,9 @@ class UnifiedJobDeletionMixin(object):
 
 class InstanceGroupMembershipMixin(object):
     '''
-    Manages signaling celery to reload its queue configuration on Instance Group membership changes
+    This mixin overloads attach/detach so that it calls InstanceGroup.save(),
+    triggering a background recalculation of policy-based instance group
+    membership.
     '''
     def attach(self, request, *args, **kwargs):
         response = super(InstanceGroupMembershipMixin, self).attach(request, *args, **kwargs)
@@ -3547,7 +3549,7 @@ class JobTemplateCallback(GenericAPIView):
         with transaction.atomic():
             job = job_template.create_job(**kv)
 
-        # Send a signal to celery that the job should be started.
+        # Send a signal to signify that the job should be started.
         result = job.signal_start(inventory_sources_already_updated=inventory_sources_already_updated)
         if not result:
             data = dict(msg=_('Error starting job!'))

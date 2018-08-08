@@ -4,7 +4,6 @@
 import os
 import re  # noqa
 import sys
-import djcelery
 import six
 from datetime import timedelta
 
@@ -60,7 +59,7 @@ DATABASES = {
         'NAME': os.path.join(BASE_DIR, 'awx.sqlite3'),
         'ATOMIC_REQUESTS': True,
         'TEST': {
-            # Test database cannot be :memory: for celery/inventory tests.
+            # Test database cannot be :memory: for inventory tests.
             'NAME': os.path.join(BASE_DIR, 'awx_test.sqlite3'),
         },
     }
@@ -279,7 +278,6 @@ INSTALLED_APPS = (
     'oauth2_provider',
     'rest_framework',
     'django_extensions',
-    'djcelery',
     'channels',
     'polymorphic',
     'taggit',
@@ -458,40 +456,9 @@ DEVSERVER_DEFAULT_PORT = '8013'
 # Set default ports for live server tests.
 os.environ.setdefault('DJANGO_LIVE_TEST_SERVER_ADDRESS', 'localhost:9013-9199')
 
-djcelery.setup_loader()
-
 BROKER_POOL_LIMIT = None
 BROKER_URL = 'amqp://guest:guest@localhost:5672//'
-CELERY_EVENT_QUEUE_TTL = 5
 CELERY_DEFAULT_QUEUE = 'awx_private_queue'
-CELERY_DEFAULT_EXCHANGE = 'awx_private_queue'
-CELERY_DEFAULT_ROUTING_KEY = 'awx_private_queue'
-CELERY_DEFAULT_EXCHANGE_TYPE = 'direct'
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TRACK_STARTED = True
-CELERYD_TASK_TIME_LIMIT = None
-CELERYD_TASK_SOFT_TIME_LIMIT = None
-CELERYD_POOL_RESTARTS = True
-CELERYD_AUTOSCALER = 'awx.main.utils.autoscale:DynamicAutoScaler'
-CELERY_RESULT_BACKEND = 'djcelery.backends.database:DatabaseBackend'
-CELERY_IMPORTS = ('awx.main.scheduler.tasks',)
-CELERY_QUEUES = ()
-CELERY_ROUTES = ('awx.main.utils.ha.AWXCeleryRouter',)
-
-
-def log_celery_failure(*args):
-    # Import annotations lazily to avoid polluting the `awx.settings` namespace
-    # and causing circular imports
-    from awx.main.tasks import log_celery_failure
-    return log_celery_failure(*args)
-
-
-CELERY_ANNOTATIONS = {'*': {'on_failure': log_celery_failure}}
-
-CELERYBEAT_SCHEDULER = 'celery.beat.PersistentScheduler'
-CELERYBEAT_MAX_LOOP_INTERVAL = 60
 CELERYBEAT_SCHEDULE = {
     'tower_scheduler': {
         'task': 'awx.main.tasks.awx_periodic_scheduler',
@@ -524,9 +491,6 @@ CELERYBEAT_SCHEDULE = {
 }
 AWX_INCONSISTENT_TASK_INTERVAL = 60 * 3
 
-# Celery queues that will always be listened to by celery workers
-# Note: Broadcast queues have unique, auto-generated names, with the alias
-# property value of the original queue name.
 AWX_CELERY_QUEUES_STATIC = [
     six.text_type(CELERY_DEFAULT_QUEUE),
 ]
@@ -625,8 +589,8 @@ SOCIAL_AUTH_SAML_ENABLED_IDPS = {}
 SOCIAL_AUTH_SAML_ORGANIZATION_ATTR = {}
 SOCIAL_AUTH_SAML_TEAM_ATTR = {}
 
-# Any ANSIBLE_* settings will be passed to the subprocess environment by the
-# celery task.
+# Any ANSIBLE_* settings will be passed to the task runner subprocess
+# environment
 
 # Do not want AWX to ask interactive questions and want it to be friendly with
 # reprovisioning
@@ -640,8 +604,7 @@ ANSIBLE_PARAMIKO_RECORD_HOST_KEYS = False
 # output
 ANSIBLE_FORCE_COLOR = True
 
-# Additional environment variables to be passed to the subprocess started by
-# the celery task.
+# Additional environment variables to be passed to the ansible subprocesses
 AWX_TASK_ENV = {}
 
 # Flag to enable/disable updating hosts M2M when saving job events.
@@ -1070,6 +1033,15 @@ LOGGING = {
             'backupCount': 5,
             'formatter':'simple',
         },
+        'callback_receiver': {
+            'level': 'WARNING',
+            'class':'logging.handlers.RotatingFileHandler',
+            'filters': ['require_debug_false'],
+            'filename': os.path.join(LOG_ROOT, 'callback_receiver.log'),
+            'maxBytes': 1024 * 1024 * 5, # 5 MB
+            'backupCount': 5,
+            'formatter':'simple',
+        },
         'dispatcher': {
             'level': 'WARNING',
             'class':'logging.handlers.RotatingFileHandler',
@@ -1160,6 +1132,9 @@ LOGGING = {
         },
         'awx.main': {
             'handlers': ['null']
+        },
+        'awx.main.commands.run_callback_receiver': {
+            'handlers': ['callback_receiver'],
         },
         'awx.main.dispatch': {
             'handlers': ['dispatcher'],
