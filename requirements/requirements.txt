@@ -94,9 +94,11 @@ azure==3.0.0
 backports.functools-lru-cache==1.5  # via jaraco.functools
 backports.ssl-match-hostname==3.5.0.1
 baron==0.6.6              # via redbaron
+billiard==3.3.0.23        # via celery
 boto3==1.7.6
 boto==2.47.0
 botocore==1.10.6
+celery==3.1.25
 certifi==2018.1.18        # via msrest
 cffi==1.11.5              # via azure-datalake-store, cryptography
 channels==1.1.8
@@ -146,7 +148,7 @@ jsonpointer==2.0          # via jsonpatch
 jsonschema==2.6.0
 keyring==11.0.0           # via msrestazure
 keystoneauth1==3.4.0      # via openstacksdk, os-client-config
-kombu==3.0.37             # via asgi-amqp
+kombu==3.0.37             # via asgi-amqp, celery
 lxml==4.1.1               # via pyvmomi
 m2crypto==0.29.0
 markdown==2.6.11
@@ -186,7 +188,7 @@ python-memcached==1.59
 python-openid==2.2.5      # via social-auth-core
 python-radius==1.0
 python-saml==2.4.0
-pytz==2018.3              # via django, irc, tempora, twilio
+pytz==2018.3              # via celery, django, irc, tempora, twilio
 pyvmomi==6.5
 pyyaml==3.12              # via djangorestframework-yaml, openstacksdk, os-client-config, psphere
 redbaron==0.6.3
